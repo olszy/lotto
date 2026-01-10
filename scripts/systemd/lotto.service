@@ -5,7 +5,6 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=%u
 WorkingDirectory={{PROJECT_ROOT}}
 Environment="PATH={{PROJECT_ROOT}}/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 
@@ -18,4 +17,4 @@ StandardError=journal
 SyslogIdentifier=lotto-auto
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
