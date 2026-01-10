@@ -28,29 +28,76 @@ def run(playwright: Playwright) -> None:
     login(page)
 
     try:
-        # Navigate directly to Pension 720 Game Page
-        page.goto("https://el.dhlottery.co.kr/game/pension720/game.jsp")
-        print('✅ Navigated to Lotto 720 page')
+        # Navigate to the Wrapper Page (TotalGame.jsp) which handles session sync correctly
+        print("🚀 Navigating to Lotto 720 Wrapper page...")
+        page.goto("https://el.dhlottery.co.kr/game/TotalGame.jsp?LottoId=LP72")
         
-        # Dismiss popup if present
-        if page.locator("#popupLayerAlert").is_visible():
-            page.locator("#popupLayerAlert").get_by_role("button", name="확인").click()
+        # Access the game iframe
+        # The actual game UI is loaded inside this iframe
+        print("Waiting for game iframe to load...")
+        frame = page.frame_locator("#ifrm_tab")
+        
+        # Wait for an element inside the frame explicitly to ensure it's ready
+        try:
+             # Wait for the balance input to be attached
+             frame.locator("#curdeposit").wait_for(state="attached", timeout=20000)
+        except Exception:
+             print("⚠️ Timeout waiting for iframe content. Retrying navigation...")
+             page.reload()
+             frame.locator("#curdeposit").wait_for(state="attached", timeout=20000)
+
+        print('✅ Navigated to Lotto 720 Game Frame')
+        
+        # ----------------------------------------------------
+        # Verify Session & Balance (Inside Frame)
+        # ----------------------------------------------------
+        time.sleep(1)
+
+        # 1. Check Login Session (via hidden input in frame)
+        user_id_val = frame.locator("input[name='USER_ID']").get_attribute("value")
+        if not user_id_val:
+            raise Exception("❌ Session lost: Not logged in on Game Frame (USER_ID empty).")
+        
+        print(f"🔑 Login ID on Game Page: {user_id_val}")
+
+        # 2. Check Balance (via hidden input #curdeposit in frame)
+        balance_val = frame.locator("#curdeposit").get_attribute("value")
+        
+        # Fallback to UI element if hidden input isn't populated
+        if not balance_val:
+            balance_text = frame.locator(".lpdeposit").first.inner_text() 
+            balance_val = balance_text.replace(",", "").replace("원", "").strip()
+            
+        try:
+            current_balance = int(balance_val)
+        except ValueError:
+            current_balance = 0
+            print(f"⚠️ Could not parse balance value: '{balance_val}', assuming 0.")
+
+        print(f"💰 Current Balance on Game Page: {current_balance:,} KRW")
+
+        if current_balance == 0:
+            raise Exception("❌ Deposit is 0 KRW. Cannot proceed with purchase. Please charge your account.")
+
+        # Dismiss popup if present (inside frame)
+        if frame.locator("#popupLayerAlert").is_visible():
+            frame.locator("#popupLayerAlert").get_by_role("button", name="확인").click()
 
         # Wait for the game UI to load
-        page.locator(".lotto720_btn_auto_number").wait_for(state="visible", timeout=15000)
+        frame.locator(".lotto720_btn_auto_number").wait_for(state="visible", timeout=15000)
 
         # [자동번호] 클릭
-        page.locator(".lotto720_btn_auto_number").click()
+        frame.locator(".lotto720_btn_auto_number").click()
         
-        time.sleep(1)
+        time.sleep(2)
 
         # [선택완료] 클릭
-        page.locator("a:has-text('선택 완료')").first.click()
+        frame.locator(".lotto720_btn_confirm_number").click()
         
-        time.sleep(1)
+        time.sleep(2)
 
         # Verify Amount
-        payment_amount_el = page.locator(".lotto720_price.lpcurpay")
+        payment_amount_el = frame.locator(".lotto720_price.lpcurpay")
         time.sleep(1)
         
         payment_amount_text = payment_amount_el.inner_text().strip()
@@ -61,10 +108,10 @@ def run(playwright: Playwright) -> None:
             return
 
         # [구매하기] 클릭
-        page.locator("a:has-text('구매하기')").first.click()
+        frame.locator("a:has-text('구매하기')").first.click()
         
         # Handle Confirmation Popup
-        confirm_popup = page.locator("#lotto720_popup_confirm")
+        confirm_popup = frame.locator("#lotto720_popup_confirm")
         confirm_popup.wait_for(state="visible", timeout=5000)
         
         # Click Final Purchase Button

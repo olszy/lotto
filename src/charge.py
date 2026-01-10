@@ -36,7 +36,9 @@ def parse_keypad(page: Page) -> dict:
     import io
 
     # 키패드 이미지 대기
-    page.wait_for_selector(".kpd-layer", state="visible")
+    # Updated from .kpd-layer to .nppfs-keypad based on browser inspection
+    keypad_selector = ".nppfs-keypad"
+    page.wait_for_selector(keypad_selector, state="visible")
     
     # 키패드 버튼들 가져오기
     buttons = page.locator("img.kpd-data")
@@ -50,7 +52,8 @@ def parse_keypad(page: Page) -> dict:
     for i in range(count):
         btn = buttons.nth(i)
         box = btn.bounding_box()
-        if box:
+        # box['width'] > 0 and box['height'] > 0 check to prevent ZeroDivisionError later
+        if box and box['width'] > 0 and box['height'] > 0:
             button_positions.append({
                 'element': btn,
                 'x': box['x'],
@@ -60,8 +63,13 @@ def parse_keypad(page: Page) -> dict:
             })
 
     # 전체 키패드 영역 스크린샷 (캡처 후 메모리에서 처리)
-    keypad_layer = page.locator(".kpd-layer")
+    time.sleep(1) # Wait for animation/render
+    keypad_layer = page.locator(keypad_selector)
     keypad_box = keypad_layer.bounding_box()
+    
+    if not keypad_box or keypad_box['width'] == 0 or keypad_box['height'] == 0:
+        raise Exception(f"Keypad container has invalid size: {keypad_box}")
+
     screenshot_bytes = page.screenshot(clip=keypad_box)
     keypad_img = Image.open(io.BytesIO(screenshot_bytes))
 
@@ -142,12 +150,26 @@ def charge_deposit(page: Page, amount: int) -> bool:
         print(f"❌ Error: Invalid amount {amount}. Choose 5000, 10000, 20000.")
         return False
         
-    page.select_option("select#amoundApply", label=f"{amount_map[amount]}원")
+    # Updated selector from 'amoundApply' to 'EcAmt'
+    page.select_option("select#EcAmt", label=f"{amount_map[amount]}원")
     
     # 충전하기 버튼 클릭 (간편충전 하단 버튼)
-    page.click("button[onclick*='fn_openEcRegistAccountCheck']")
+    # fn_openEcRegistAccountCheck가 있는 버튼 중 'visible'한 것만 클릭
+    charge_btn = page.locator("button", has_text="충전하기").filter(has=page.locator("xpath=self::*[contains(@onclick, 'fn_openEcRegistAccountCheck')]")).locator("visible=true")
+    if charge_btn.count() > 0:
+        charge_btn.first.click()
+    else:
+        # Fallback: try class based if text fails
+        page.locator(".btn-rec01:visible").first.click()
     
     # PIN 키패드 대기
+    # Updated selector: .kpd-layer -> .nppfs-keypad
+    try:
+        page.wait_for_selector(".nppfs-keypad", state="visible", timeout=10000)
+    except Exception:
+        # Fallback for old selector just in case
+        page.wait_for_selector(".kpd-layer", state="visible", timeout=5000)
+
     number_map = parse_keypad(page)
     
     if len(number_map) < 9:
