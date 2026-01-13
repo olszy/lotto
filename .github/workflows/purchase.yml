@@ -2,9 +2,9 @@ name: Lotto Purchase (Run on GitHub)
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   # 매주 일요일 오전 9:00 KST (UTC 00:00)
-  #   - cron: '0 0 * * 0'
+   schedule:
+     # 매주 월요일 오전 9:30 KST (UTC 00:30)
+     - cron: '30 0 * * 1'
 
 jobs:
   purchase:
@@ -20,6 +20,12 @@ jobs:
         python-version: '3.9'
         cache: 'pip'
 
+     - name: Install Tesseract
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y tesseract-ocr
+        sudo apt-get install -y tesseract-ocr-kor      
+               
     - name: Install Dependencies
       run: |
         pip install -r requirements.txt
